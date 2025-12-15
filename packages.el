@@ -49,4 +49,11 @@
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;(unpin! t)
 (package! frames-only-mode)
-(package! nix-mode)
+(package! tramp-hlo)
+
+;; (package! ai-mode)
+
+;; Example of enabling specific backends
+;; Ensure you have installed the respective packages first (e.g., ai-mode-openai, ai-mode-google-genai).
+
+;; OpenAI Backend

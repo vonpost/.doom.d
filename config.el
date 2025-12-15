@@ -26,7 +26,7 @@
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
 ;;(load-theme 'ewal-doom-vibrant t)
-(doom-theme 'doom-dracula)
+;;(doom-theme 'doom-dracula)
 
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
@@ -53,13 +53,23 @@
 ;;
 ;; You can also try 'gd' (or 'C-c c d') to jump to their definition and see how
 ;; they are implemented.
-(setq lsp-python-ms-executable (executable-find "python-language-server")))
 (use-package! frames-only-mode )
+
+;; (use-package! ai-mode-openai
+;;   :after (ai-mode ai-model-management)
+;;   :config (progn
+;;             (add-to-list 'ai-model-management-providers 'ai-mode-openai--get-models)
+;;             ;; Set your OpenAI API key:
+;;             ;; (setq ai-mode-openai--api-key "YOUR_OPENAI_API_KEY")
+;;             ))
 (setq frames-only-mode t)
-(setq tramp-default-method "scp")
-(add-to-list 'default-frame-alist '(mouse-color . "palegoldenrod"))
-(setq ispell-list-command "--list")
-(add-to-list 'flycheck-checkers 'tex-aspell-dynamic)
-(setq ispell-program-name "aspell")
-(setq ispell-silently-savep t)
-(setq ispell-dictionary "en")
+(setq remote-file-name-inhibit-locks t
+      tramp-use-scp-direct-remote-copying t
+      remote-file-name-inhibit-auto-save-visited t)
+(setq remote-file-name-inhibit-locks t
+      tramp-use-scp-direct-remote-copying t
+      remote-file-name-inhibit-auto-save-visited t)
+(with-eval-after-load 'tramp
+  (with-eval-after-load 'compile
+    (remove-hook 'compilation-mode-hook #'tramp-compile-disable-ssh-controlmaster-options)))
+(tramp-hlo-setup)

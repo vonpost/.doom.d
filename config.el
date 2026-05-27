@@ -72,4 +72,22 @@
 (with-eval-after-load 'tramp
   (with-eval-after-load 'compile
     (remove-hook 'compilation-mode-hook #'tramp-compile-disable-ssh-controlmaster-options)))
-(tramp-hlo-setup)
+(straight-use-package
+ '(ement :type git :host github :repo "alphapapa/ement.el"))
+(use-package! msgpack) (use-package! tramp-rpc)
+(use-package! detached
+  :init
+  (detached-init)
+  :bind
+  (([remap async-shell-command] . detached-shell-command)
+   ([remap compile] . detached-compile)
+   ([remap recompile] . detached-compile-recompile))
+  :config
+  (setq detached-show-output-on-attach t))
+
+(use-package! dtach-bootstrap
+  :after detached
+  :config
+  (setq dtach-bootstrap-install-strategies '(system cached nix)
+        dtach-bootstrap-detached-missing-action 'prompt)
+  (dtach-bootstrap-detached-mode 1))

@@ -64,3 +64,9 @@
   :recipe (:host github
            :repo "vonpost/dtach-bootstrap"
            :files ("*.el" "flake.nix" "flake.lock" "README.md")))
+
+(package! tramp)
+(package! evil-ghostel)
+(package! ghostel)
+(package! hide-mode-line)
+(package! agent-shell)

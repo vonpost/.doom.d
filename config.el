@@ -91,3 +91,12 @@
   (setq dtach-bootstrap-install-strategies '(system cached nix)
         dtach-bootstrap-detached-missing-action 'prompt)
   (dtach-bootstrap-detached-mode 1))
+
+(use-package! ghostel)
+(use-package! evil-ghostel
+  :after (ghostel evil)
+  :hook (ghostel-mode . evil-ghostel-mode))
+(use-package! hide-mode-line)
+
+(setq tramp-rpc-deploy-git-build-policy 'release)
+(use-package! agent-shell)

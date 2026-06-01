@@ -103,6 +103,20 @@
         dtach-bootstrap-detached-missing-action 'prompt)
   (dtach-bootstrap-detached-mode 1))
 
+(defvar persp-emacsclient-init-frame-behaviour-override)
+(defvar persp-init-new-frame-behaviour-override)
+(defvar persp-interactive-init-frame-behaviour-override)
+(defvar persp-mode)
+
+(after! persp-mode
+  ;; Doom's workspace module creates a private #N workspace for new frames.
+  ;; That clashes with using Emacs frames as normal WM windows.
+  (setq persp-init-new-frame-behaviour-override nil
+        persp-interactive-init-frame-behaviour-override nil
+        persp-emacsclient-init-frame-behaviour-override nil)
+  (remove-hook 'delete-frame-functions #'+workspaces-delete-associated-workspace-h)
+  (remove-hook 'server-done-hook #'+workspaces-delete-associated-workspace-h))
+
 (defun dcol/ghostel-frame (&optional frame-name)
   "Restore this Ghostel frame's terminal, or open a fresh Ghostel frame."
   (interactive)
@@ -230,6 +244,15 @@
           (set-frame-parameter frame 'dcol-ghostel-buffer nil))
         nil)))
 
+  (defun dcol/ghostel-frame--register-buffer (frame buffer)
+    "Register BUFFER with FRAME's current workspace, if workspaces are active."
+    (set-window-dedicated-p (frame-selected-window frame) nil)
+    (when (and (bound-and-true-p persp-mode)
+               (fboundp 'get-current-persp)
+               (fboundp 'persp-add-buffer))
+      (when-let ((persp (get-current-persp frame)))
+        (persp-add-buffer buffer persp nil nil))))
+
   (defun dcol/ghostel-frame--restore-current ()
     "Restore this frame's terminal when it is showing a non-Ghostel buffer."
     (let ((window (frame-selected-window)))
@@ -245,13 +268,10 @@
     (interactive)
     (let* ((terminal-default-directory default-directory)
            (title (or frame-name "ghostel"))
-           (after-make-frame-functions
-            (remq 'persp-init-new-frame after-make-frame-functions))
            (frame-parameters `((name . ,title)
                                (menu-bar-lines . 0)
                                (tool-bar-lines . 0)
-                               (vertical-scroll-bars . nil)
-                               (unsplittable . t)))
+                               (vertical-scroll-bars . nil)))
            (frame (if-let ((display (and (not (display-graphic-p))
                                          (getenv "DISPLAY"))))
                       (make-frame-on-display display frame-parameters)
@@ -277,8 +297,13 @@
           (set-process-query-on-exit-flag proc nil)))
       (set-frame-parameter frame 'dcol-ghostel-buffer buffer)
       (set-frame-parameter frame 'delete-before nil)
+      (dcol/ghostel-frame--register-buffer frame buffer)
       (set-frame-name title)
-      buffer)))
+      buffer))
+
+  (dolist (frame (frame-list))
+    (when-let ((buffer (dcol/ghostel-frame-terminal-buffer frame)))
+      (dcol/ghostel-frame--register-buffer frame buffer))))
 (use-package! evil-ghostel
   :after (ghostel evil)
   :hook (ghostel-mode . evil-ghostel-mode)

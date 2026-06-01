@@ -113,71 +113,11 @@
   :config
   (setq ghostel-query-before-killing nil)
 
-  (defun dcol/ghostel-use-solaire-background (&rest _)
-    (when (facep 'ghostel-default)
-      (set-face-attribute 'ghostel-default nil
-                          :inherit (if (facep 'solaire-default-face)
-                                       'solaire-default-face
-                                     'default))))
+  (defun dcol/ghostel-disable-solaire ()
+    (when (fboundp 'turn-off-solaire-mode)
+      (turn-off-solaire-mode)))
 
-  (defun dcol/ghostel-enable-solaire ()
-    (when (fboundp 'solaire-mode)
-      (solaire-mode 1)))
-
-  (defun dcol/ghostel-use-corfu-completion ()
-    (when (fboundp 'corfu-mode)
-      (when (bound-and-true-p corfu-mode)
-        (corfu-mode -1))
-      (setq-local corfu-auto nil)
-      (corfu-mode 1)))
-
-  (defun dcol/ghostel-origin-window ()
-    (if (minibufferp)
-        (minibuffer-selected-window)
-      (selected-window)))
-
-  (defun dcol/ghostel-origin-p ()
-    (when-let* ((window (dcol/ghostel-origin-window))
-                ((window-live-p window)))
-      (with-current-buffer (window-buffer window)
-        (derived-mode-p 'ghostel-mode))))
-
-  (defun dcol/ghostel-display-buffer-in-new-frame-p (buffer-name _action)
-    (and (dcol/ghostel-origin-p)
-         (when-let ((buffer (get-buffer buffer-name)))
-           (with-current-buffer buffer
-             (not (derived-mode-p 'ghostel-mode))))))
-
-  (defun dcol/ghostel-preserve-terminal-window ()
-    (setq-local switch-to-buffer-obey-display-actions t)
-    (dolist (window (get-buffer-window-list (current-buffer) nil t))
-      (set-window-dedicated-p window t)))
-
-  (defun dcol/ghostel-toggle-line-char ()
-    (interactive)
-    (if (eq ghostel--input-mode 'line)
-        (ghostel-char-mode)
-      (ghostel-line-mode)))
-
-  (add-hook 'enable-theme-functions #'dcol/ghostel-use-solaire-background -50)
-  (add-hook 'ghostel-mode-hook #'dcol/ghostel-enable-solaire)
-  (add-hook 'ghostel-mode-hook #'dcol/ghostel-use-corfu-completion)
-  (add-hook 'ghostel-mode-hook #'dcol/ghostel-preserve-terminal-window)
-  (dcol/ghostel-use-solaire-background)
-
-  (add-to-list 'display-buffer-alist
-               '(dcol/ghostel-display-buffer-in-new-frame-p
-                 (display-buffer-pop-up-frame)
-                 (inhibit-same-window . t)
-                 (pop-up-frame-parameters . ((name . "emacs")))))
-
-  (define-key ghostel-char-mode-map (kbd "M-x") #'execute-extended-command)
-  (dolist (map (list ghostel-semi-char-mode-map
-                     ghostel-char-mode-map
-                     ghostel-line-mode-map))
-    (define-key map (kbd "M-RET") #'dcol/ghostel-toggle-line-char)
-    (define-key map (kbd "M-<return>") #'dcol/ghostel-toggle-line-char)
-    (define-key map (kbd "C-M-m") #'dcol/ghostel-toggle-line-char))
+  (add-hook 'ghostel-mode-hook #'dcol/ghostel-disable-solaire)
 
   (defun dcol/ghostel-frame-cleanup (frame)
     (when-let* ((buffer (frame-parameter frame 'dcol-ghostel-buffer))
@@ -212,8 +152,7 @@
         (ghostel--load-module t)
         (ghostel--init-buffer buffer)
         (ghostel-char-mode)
-        (dcol/ghostel-enable-solaire)
-        (dcol/ghostel-preserve-terminal-window)
+        (dcol/ghostel-disable-solaire)
         (setq-local default-directory terminal-default-directory
                     ghostel-query-before-killing nil
                     mode-line-format nil

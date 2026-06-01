@@ -70,3 +70,4 @@
 (package! ghostel)
 (package! hide-mode-line)
 (package! agent-shell)
+(package! journalctl-mode)

@@ -205,19 +205,19 @@
   (map! :map ghostel-mode-map
         :localleader
         (:prefix ("m" . "mode")
-         "c" #'ghostel-char-mode
-         "e" #'ghostel-emacs-mode
-         "l" #'ghostel-line-mode
-         "s" #'ghostel-semi-char-mode
-         "y" #'ghostel-copy-mode)
+                 "c" #'ghostel-char-mode
+                 "e" #'ghostel-emacs-mode
+                 "l" #'ghostel-line-mode
+                 "s" #'ghostel-semi-char-mode
+                 "y" #'ghostel-copy-mode)
         (:prefix ("s" . "send")
-         "\\" #'ghostel-send-C-backslash
-         "c" #'ghostel-send-C-c
-         "d" #'ghostel-send-C-d
-         "e" #'dcol/ghostel-send-terminal-escape
-         "g" #'ghostel-send-C-g
-         "k" #'ghostel-send-next-key
-         "z" #'ghostel-send-C-z)
+                 "\\" #'ghostel-send-C-backslash
+                 "c" #'ghostel-send-C-c
+                 "d" #'ghostel-send-C-d
+                 "e" #'dcol/ghostel-send-terminal-escape
+                 "g" #'ghostel-send-C-g
+                 "k" #'ghostel-send-next-key
+                 "z" #'ghostel-send-C-z)
         "k" #'ghostel-clear-scrollback
         "n" #'ghostel-next-prompt
         "N" #'ghostel-previous-prompt
@@ -353,3 +353,4 @@
 
 (setq tramp-rpc-deploy-git-build-policy 'release)
 (use-package! agent-shell)
+(use-package! journalctl-mode)

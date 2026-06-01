@@ -104,10 +104,11 @@
   (dtach-bootstrap-detached-mode 1))
 
 (defun dcol/ghostel-frame (&optional frame-name)
-  "Open a fresh Ghostel terminal in a new frame."
+  "Restore this Ghostel frame's terminal, or open a fresh Ghostel frame."
   (interactive)
   (require 'ghostel)
-  (dcol/ghostel-frame--open frame-name))
+  (or (dcol/ghostel-frame--restore-current)
+      (dcol/ghostel-frame--open frame-name)))
 
 (use-package! ghostel
   :config
@@ -131,33 +132,15 @@
       (setq-local corfu-auto nil)
       (corfu-mode 1)))
 
-  (defun dcol/ghostel-origin-window ()
-    (if (minibufferp)
-        (minibuffer-selected-window)
-      (selected-window)))
-
-  (defun dcol/ghostel-origin-p ()
-    (when-let* ((window (dcol/ghostel-origin-window))
-                ((window-live-p window)))
-      (with-current-buffer (window-buffer window)
-        (derived-mode-p 'ghostel-mode))))
-
-  (defun dcol/ghostel-display-buffer-in-new-frame-p (buffer-name _action)
-    (and (dcol/ghostel-origin-p)
-         (when-let ((buffer (get-buffer buffer-name)))
-           (with-current-buffer buffer
-             (not (derived-mode-p 'ghostel-mode))))))
-
-  (defun dcol/ghostel-preserve-terminal-window ()
-    (setq-local switch-to-buffer-obey-display-actions t)
-    (dolist (window (get-buffer-window-list (current-buffer) nil t))
-      (set-window-dedicated-p window t)))
-
   (defun dcol/ghostel-send-terminal-escape ()
     (interactive)
     (when (fboundp 'ghostel--snap-to-input)
       (ghostel--snap-to-input))
     (ghostel--send-encoded "escape" ""))
+
+  (defun dcol/ghostel-send-C-x ()
+    (interactive)
+    (ghostel--send-encoded "x" "ctrl"))
 
   (defun dcol/ghostel-cycle-input-mode ()
     (interactive)
@@ -170,16 +153,31 @@
   (add-hook 'enable-theme-functions #'dcol/ghostel-use-solaire-background -50)
   (add-hook 'ghostel-mode-hook #'dcol/ghostel-enable-solaire)
   (add-hook 'ghostel-mode-hook #'dcol/ghostel-use-corfu-completion)
-  (add-hook 'ghostel-mode-hook #'dcol/ghostel-preserve-terminal-window)
   (dcol/ghostel-use-solaire-background)
-  (setq ghostel-keymap-exceptions '("<escape>" "M-x"))
+  (setq ghostel-keymap-exceptions
+        '("<escape>" "C-c" "C-x" "C-u" "C-h" "M-x" "M-:" "C-\\"))
   (ghostel--rebuild-semi-char-keymap)
 
-  (add-to-list 'display-buffer-alist
-               '(dcol/ghostel-display-buffer-in-new-frame-p
-                 (display-buffer-pop-up-frame)
-                 (inhibit-same-window . t)
-                 (pop-up-frame-parameters . ((name . "emacs")))))
+  (remove-hook 'ghostel-mode-hook #'dcol/ghostel-preserve-terminal-window)
+  (setq display-buffer-alist
+        (assq-delete-all 'dcol/ghostel-display-buffer-in-new-frame-p
+                         display-buffer-alist))
+  (when (fboundp 'dcol/ghostel-redirect-switch-to-buffer-a)
+    (advice-remove 'switch-to-buffer
+                   #'dcol/ghostel-redirect-switch-to-buffer-a))
+  (when (fboundp 'dcol/ghostel-read-from-minibuffer-a)
+    (advice-remove 'read-from-minibuffer
+                   #'dcol/ghostel-read-from-minibuffer-a))
+  (when (fboundp 'dcol/ghostel-find-file-a)
+    (advice-remove 'find-file #'dcol/ghostel-find-file-a))
+  (when (fboundp 'dcol/ghostel-switch-to-buffer-a)
+    (advice-remove 'switch-to-buffer #'dcol/ghostel-switch-to-buffer-a))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'ghostel-mode)
+        (kill-local-variable 'switch-to-buffer-obey-display-actions)
+        (dolist (window (get-buffer-window-list buffer nil t))
+          (set-window-dedicated-p window nil)))))
 
   (dolist (map (list ghostel-mode-map
                      ghostel-semi-char-mode-map
@@ -222,6 +220,26 @@
 
   (add-hook 'delete-frame-functions #'dcol/ghostel-frame-cleanup)
 
+  (defun dcol/ghostel-frame-terminal-buffer (&optional frame)
+    "Return FRAME's live Ghostel terminal buffer, if it has one."
+    (let* ((frame (or frame (selected-frame)))
+           (buffer (frame-parameter frame 'dcol-ghostel-buffer)))
+      (if (buffer-live-p buffer)
+          buffer
+        (when buffer
+          (set-frame-parameter frame 'dcol-ghostel-buffer nil))
+        nil)))
+
+  (defun dcol/ghostel-frame--restore-current ()
+    "Restore this frame's terminal when it is showing a non-Ghostel buffer."
+    (let ((window (frame-selected-window)))
+      (unless (with-current-buffer (window-buffer window)
+                (derived-mode-p 'ghostel-mode))
+        (when-let ((buffer (dcol/ghostel-frame-terminal-buffer)))
+          (set-window-dedicated-p window nil)
+          (set-window-buffer window buffer)
+          buffer))))
+
   (defun dcol/ghostel-frame--open (&optional frame-name)
     "Open a fresh Ghostel terminal in a new frame with minimal overhead."
     (interactive)
@@ -246,7 +264,6 @@
         (ghostel--init-buffer buffer)
         (ghostel-semi-char-mode)
         (dcol/ghostel-enable-solaire)
-        (dcol/ghostel-preserve-terminal-window)
         (setq-local default-directory terminal-default-directory
                     ghostel-query-before-killing nil
                     mode-line-format nil
@@ -300,9 +317,10 @@
   (evil-define-key* 'normal evil-ghostel-mode-map
     (kbd "<escape>") #'dcol/ghostel-normal-escape)
 
-  (evil-define-key* 'insert ghostel-semi-char-mode-map
+  (evil-define-key* 'insert evil-ghostel-mode-map
     (kbd "C-c") #'ghostel-send-C-c
-    (kbd "C-d") #'ghostel-send-C-d)
+    (kbd "C-d") #'ghostel-send-C-d
+    (kbd "C-x") #'dcol/ghostel-send-C-x)
 
   (define-key ghostel-semi-char-mode-map (kbd "<escape>")
               #'dcol/ghostel-escape-dwim))

@@ -153,17 +153,27 @@
     (dolist (window (get-buffer-window-list (current-buffer) nil t))
       (set-window-dedicated-p window t)))
 
-  (defun dcol/ghostel-toggle-line-char ()
+  (defun dcol/ghostel-send-terminal-escape ()
     (interactive)
-    (if (eq ghostel--input-mode 'line)
-        (ghostel-char-mode)
-      (ghostel-line-mode)))
+    (when (fboundp 'ghostel--snap-to-input)
+      (ghostel--snap-to-input))
+    (ghostel--send-encoded "escape" ""))
+
+  (defun dcol/ghostel-cycle-input-mode ()
+    (interactive)
+    (pcase ghostel--input-mode
+      ('char (ghostel-semi-char-mode))
+      ('semi-char (ghostel-line-mode))
+      ('line (ghostel-char-mode))
+      (_ (ghostel-semi-char-mode))))
 
   (add-hook 'enable-theme-functions #'dcol/ghostel-use-solaire-background -50)
   (add-hook 'ghostel-mode-hook #'dcol/ghostel-enable-solaire)
   (add-hook 'ghostel-mode-hook #'dcol/ghostel-use-corfu-completion)
   (add-hook 'ghostel-mode-hook #'dcol/ghostel-preserve-terminal-window)
   (dcol/ghostel-use-solaire-background)
+  (setq ghostel-keymap-exceptions '("<escape>" "M-x"))
+  (ghostel--rebuild-semi-char-keymap)
 
   (add-to-list 'display-buffer-alist
                '(dcol/ghostel-display-buffer-in-new-frame-p
@@ -171,13 +181,36 @@
                  (inhibit-same-window . t)
                  (pop-up-frame-parameters . ((name . "emacs")))))
 
-  (define-key ghostel-char-mode-map (kbd "M-x") #'execute-extended-command)
-  (dolist (map (list ghostel-semi-char-mode-map
+  (dolist (map (list ghostel-mode-map
+                     ghostel-semi-char-mode-map
                      ghostel-char-mode-map
                      ghostel-line-mode-map))
-    (define-key map (kbd "M-RET") #'dcol/ghostel-toggle-line-char)
-    (define-key map (kbd "M-<return>") #'dcol/ghostel-toggle-line-char)
-    (define-key map (kbd "C-M-m") #'dcol/ghostel-toggle-line-char))
+    (define-key map (kbd "M-x") #'execute-extended-command)
+    (define-key map (kbd "M-RET") #'dcol/ghostel-cycle-input-mode)
+    (define-key map (kbd "M-<return>") #'dcol/ghostel-cycle-input-mode)
+    (define-key map (kbd "C-M-m") #'dcol/ghostel-cycle-input-mode))
+
+  (map! :map ghostel-mode-map
+        :localleader
+        (:prefix ("m" . "mode")
+         "c" #'ghostel-char-mode
+         "e" #'ghostel-emacs-mode
+         "l" #'ghostel-line-mode
+         "s" #'ghostel-semi-char-mode
+         "y" #'ghostel-copy-mode)
+        (:prefix ("s" . "send")
+         "\\" #'ghostel-send-C-backslash
+         "c" #'ghostel-send-C-c
+         "d" #'ghostel-send-C-d
+         "e" #'dcol/ghostel-send-terminal-escape
+         "g" #'ghostel-send-C-g
+         "k" #'ghostel-send-next-key
+         "z" #'ghostel-send-C-z)
+        "k" #'ghostel-clear-scrollback
+        "n" #'ghostel-next-prompt
+        "N" #'ghostel-previous-prompt
+        "p" #'ghostel-paste
+        "y" #'ghostel-copy-all)
 
   (defun dcol/ghostel-frame-cleanup (frame)
     (when-let* ((buffer (frame-parameter frame 'dcol-ghostel-buffer))
@@ -211,7 +244,7 @@
       (with-current-buffer buffer
         (ghostel--load-module t)
         (ghostel--init-buffer buffer)
-        (ghostel-char-mode)
+        (ghostel-semi-char-mode)
         (dcol/ghostel-enable-solaire)
         (dcol/ghostel-preserve-terminal-window)
         (setq-local default-directory terminal-default-directory
@@ -231,7 +264,48 @@
       buffer)))
 (use-package! evil-ghostel
   :after (ghostel evil)
-  :hook (ghostel-mode . evil-ghostel-mode))
+  :hook (ghostel-mode . evil-ghostel-mode)
+  :config
+  (setq evil-ghostel-escape 'evil)
+
+  (defvar-local dcol/ghostel-last-escape-time nil)
+  (defvar dcol/ghostel-double-escape-delay 0.7)
+
+  (defun dcol/ghostel-insert-escape ()
+    (interactive)
+    (setq dcol/ghostel-last-escape-time (float-time))
+    (evil-force-normal-state))
+
+  (defun dcol/ghostel-normal-escape ()
+    (interactive)
+    (let ((now (float-time)))
+      (if (and dcol/ghostel-last-escape-time
+               (< (- now dcol/ghostel-last-escape-time)
+                  dcol/ghostel-double-escape-delay))
+          (progn
+            (setq dcol/ghostel-last-escape-time nil)
+            (dcol/ghostel-send-terminal-escape))
+        (setq dcol/ghostel-last-escape-time now)
+        (keyboard-quit))))
+
+  (defun dcol/ghostel-escape-dwim ()
+    (interactive)
+    (pcase evil-state
+      ('insert (dcol/ghostel-insert-escape))
+      ('normal (dcol/ghostel-normal-escape))
+      (_ (keyboard-quit))))
+
+  (evil-define-key* 'insert evil-ghostel-mode-map
+    (kbd "<escape>") #'dcol/ghostel-insert-escape)
+  (evil-define-key* 'normal evil-ghostel-mode-map
+    (kbd "<escape>") #'dcol/ghostel-normal-escape)
+
+  (evil-define-key* 'insert ghostel-semi-char-mode-map
+    (kbd "C-c") #'ghostel-send-C-c
+    (kbd "C-d") #'ghostel-send-C-d)
+
+  (define-key ghostel-semi-char-mode-map (kbd "<escape>")
+              #'dcol/ghostel-escape-dwim))
 (use-package! hide-mode-line)
 
 (setq tramp-rpc-deploy-git-build-policy 'release)

@@ -71,3 +71,8 @@
 (package! hide-mode-line)
 (package! agent-shell)
 (package! journalctl-mode)
+(package! jupyter)
+(package! code-cells)
+(package! emacs-jupyter-notebook
+  :recipe (:local-repo "/home/dcol/emacs-jupyter-notebook"
+           :files ("*.el")))

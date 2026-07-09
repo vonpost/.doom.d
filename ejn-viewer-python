@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Local matplotlib viewer interpreter for emacs-jupyter-notebook (W8).
+#
+# emacs-jupyter-notebook-local-python-command points here. The viewer
+# manager invokes it exactly like `python3`, i.e.
+#     ejn-viewer-python -u <viewer script> --socket <path> --backend tk ...
+# so this wrapper forwards ALL args ("$@") into a nix shell that provides
+# python3 with numpy + matplotlib + tkinter (for the TkAgg GUI backend).
+#
+# Tk (not Qt) is used deliberately: PyQt5 under a bare `python3.withPackages`
+# nix env cannot locate its Qt platform plugin (xcb) and aborts with
+# "Could not find the Qt platform plugin", which bypasses matplotlib's
+# backend fallback.  TkAgg inherits Emacs's DISPLAY and needs no plugin
+# path.  Set `emacs-jupyter-notebook-viewer-backend' to `tk' to match.
+#
+# The remote kernels stay headless; this GUI environment is LOCAL only.
+# Keep matplotlib here at a version matching the remote kernels (W8 ships
+# figures as pickles): both sides use <nixpkgs>, so pin the local and
+# remote nix channels together if they ever drift.
+exec nix shell --impure --expr \
+  'with import <nixpkgs> {}; python3.withPackages (ps: with ps; [ numpy matplotlib tkinter ])' \
+  -c python3 "$@"

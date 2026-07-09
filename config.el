@@ -25,19 +25,8 @@
 ;; There are two ways to load a theme. Both assume the theme is installed and
 ;; available. You can either set `doom-theme' or manually load a theme with the
 ;; `load-theme' function. This is the default:
-;;(load-theme 'ewal-doom-vibrant t)
+(load-theme 'doom-dracula t)
 (setq! doom-theme 'doom-dracula)
-
-(defun dcol/disable-other-color-themes (theme)
-  (when (or (not (fboundp 'doom--theme-is-colorscheme-p))
-            (doom--theme-is-colorscheme-p theme))
-    (dolist (enabled (copy-sequence custom-enabled-themes))
-      (when (and (not (eq enabled theme))
-                 (or (not (fboundp 'doom--theme-is-colorscheme-p))
-                     (doom--theme-is-colorscheme-p enabled)))
-        (disable-theme enabled)))))
-
-(add-hook 'enable-theme-functions #'dcol/disable-other-color-themes 100)
 
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
@@ -95,6 +84,93 @@
    ([remap recompile] . detached-compile-recompile))
   :config
   (setq detached-show-output-on-attach t))
+
+(after! detached
+  (defcustom my/detached-attach-head-lines 80
+    "Number of initial detached session log lines to show before reattaching."
+    :type 'integer
+    :group 'detached)
+
+  (defcustom my/detached-attach-tail-lines 200
+    "Number of final detached session log lines to show before reattaching."
+    :type 'integer
+    :group 'detached)
+
+  (defun my/detached--nonnegative-integer (value fallback)
+    "Return VALUE if it is a non-negative integer, otherwise FALLBACK."
+    (if (and (integerp value) (>= value 0))
+        value
+      fallback))
+
+  (defun my/detached-attach-head-tail-context-command (session)
+    "Return a shell command that prints head and tail context for SESSION.
+
+This intentionally uses detached.el private APIs.  In detached.el 0.10.1,
+`detached-session-attach-command' uses `detached--session-file' with LOCAL
+non-nil for shell-executable log/socket paths; keep this in sync after
+detached.el upgrades."
+    (let* ((head-lines
+            (my/detached--nonnegative-integer my/detached-attach-head-lines 80))
+           (tail-lines
+            (my/detached--nonnegative-integer my/detached-attach-tail-lines 200))
+           (log (shell-quote-argument (detached--session-file session 'log t)))
+           (tail-program (shell-quote-argument detached-tail-program)))
+      (string-join
+       `("{"
+         ,(format "if [ -r %s ]; then" log)
+         ,(format "_detached_head=%d;" head-lines)
+         ,(format "_detached_tail=%d;" tail-lines)
+         ,(format "set -- $(wc -l < %s 2>/dev/null || printf '0');" log)
+         "_detached_lines=${1:-0};"
+         "if [ \"$_detached_lines\" -le $((_detached_head + _detached_tail)) ]; then"
+         "printf '\\n===== detached log: complete log =====\\n';"
+         ,(format "sed -n '1,$p' %s;" log)
+         "else"
+         "printf '\\n===== detached log: first %d lines =====\\n' \"$_detached_head\";"
+         ,(format "if [ \"$_detached_head\" -gt 0 ]; then sed -n '1,%dp' %s; fi;"
+                  head-lines log)
+         "printf '\\n===== detached log: middle omitted (%d lines) =====\\n' $((_detached_lines - _detached_head - _detached_tail));"
+         "printf '\\n===== detached log: last %d lines =====\\n' \"$_detached_tail\";"
+         ,(format "if [ \"$_detached_tail\" -gt 0 ]; then %s -n %d %s; fi;"
+                  tail-program tail-lines log)
+         "fi;"
+         "else"
+         "printf '\\n[detached] session log is unavailable; continuing to attach.\\n';"
+         "fi;"
+         "printf '\\n===== live detached session =====\\n';"
+         "}")
+       " ")))
+
+  (defun my/detached-shell-command-attach-session-head-tail (session)
+    "Attach to SESSION after showing the beginning and end of its log.
+
+This is modeled on `detached-shell-command-attach-session' and deliberately
+binds `detached-show-session-context' to nil so detached.el's default
+tail-only context is not printed a second time."
+    (let ((inhibit-message t))
+      (detached-with-session session
+        (cl-letf* (((symbol-function #'set-process-sentinel) #'ignore)
+                   (detached-session-mode 'attached)
+                   (buffer (get-buffer-create detached--shell-command-buffer))
+                   (default-directory (detached-session-directory session))
+                   (detached-show-session-context nil)
+                   (command (string-join
+                             (list
+                              (my/detached-attach-head-tail-context-command session)
+                              (detached-session-attach-command session :type 'string))
+                             "; ")))
+          (when (get-buffer-process buffer)
+            (setq buffer (generate-new-buffer (buffer-name buffer))))
+          (funcall #'async-shell-command command buffer)
+          (with-current-buffer buffer
+            (setq-local default-directory
+                        (detached-session-working-directory session))
+            (setq detached-buffer-session detached-current-session))))))
+
+  (setq detached-shell-command-session-action
+        '(:attach my/detached-shell-command-attach-session-head-tail
+          :view detached-view-dwim
+          :run detached-start-shell-command-session)))
 
 (use-package! dtach-bootstrap
   :after detached
@@ -354,3 +430,47 @@
 (setq tramp-rpc-deploy-git-build-policy 'release)
 (use-package! agent-shell)
 (use-package! journalctl-mode)
+(use-package! jupyter)
+(use-package! code-cells)
+(use-package! emacs-jupyter-notebook
+  :load-path "/home/dcol/emacs-jupyter-notebook"
+  :commands (emacs-jupyter-notebook-mode
+             emacs-jupyter-notebook-start-remote-kernel
+             emacs-jupyter-notebook-reconnect-remote-kernel
+             emacs-jupyter-notebook-send-cell
+             emacs-jupyter-notebook-send-region
+             emacs-jupyter-notebook-send-buffer
+             emacs-jupyter-notebook-interrupt-kernel
+             emacs-jupyter-notebook-restart-kernel
+             emacs-jupyter-notebook-shutdown-kernel
+             emacs-jupyter-notebook-clear-results
+             emacs-jupyter-notebook-open-figure-interactive)
+  :init
+  (setq emacs-jupyter-notebook-default-profile "mother"
+        ;; Local interpreter for the W8 interactive matplotlib viewer: a
+        ;; wrapper that runs python3 + numpy/matplotlib/tkinter from a nix
+        ;; shell.  The remote kernels stay headless; this is LOCAL only.
+        emacs-jupyter-notebook-local-python-command
+        (expand-file-name "ejn-viewer-python" doom-user-dir)
+        ;; Tk, not Qt: PyQt5 under a bare nix python env can't find its Qt
+        ;; xcb platform plugin and aborts; TkAgg inherits Emacs's DISPLAY.
+        emacs-jupyter-notebook-viewer-backend 'tk
+        emacs-jupyter-notebook-remote-profiles
+        '(("mother" . (:host "mother"
+                       :remote-cwd "~"
+                       :remote-cache-dir "~/.cache/emacs-jupyter-notebook"
+                       :kernelspec "python3"
+                       :jupyter-command "nix shell --impure --expr 'with import <nixpkgs> {}; python3.withPackages (ps: with ps; [ jupyter ipykernel numpy matplotlib ])' -c jupyter"))))
+  :config
+  (map! :map emacs-jupyter-notebook-mode-map
+        :localleader
+        :desc "Start remote kernel" "s" #'emacs-jupyter-notebook-start-remote-kernel
+        :desc "Reconnect kernel" "n" #'emacs-jupyter-notebook-reconnect-remote-kernel
+        :desc "Send cell" "c" #'emacs-jupyter-notebook-send-cell
+        :desc "Send region" "r" #'emacs-jupyter-notebook-send-region
+        :desc "Send buffer" "b" #'emacs-jupyter-notebook-send-buffer
+        :desc "Open figure (interactive)" "I" #'emacs-jupyter-notebook-open-figure-interactive
+        :desc "Interrupt kernel" "i" #'emacs-jupyter-notebook-interrupt-kernel
+        :desc "Restart kernel" "R" #'emacs-jupyter-notebook-restart-kernel
+        :desc "Shutdown kernel" "q" #'emacs-jupyter-notebook-shutdown-kernel
+        :desc "Clear results" "l" #'emacs-jupyter-notebook-clear-results))
